@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/4.0/ref/settings/
 """
 
 from pathlib import Path
+from datetime import timedelta
 
 import os
 
@@ -29,6 +30,27 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
+# Review Analysis Settings
+REVIEW_ANALYSIS_SETTINGS = {
+    # Cron job settings
+    'CRON_INTERVAL_MINUTES': int(os.environ.get('REVIEW_CRON_INTERVAL', 5)),  # 5 min for dev, 1440 for prod
+    'MAX_AGE_HOURS': int(os.environ.get('REVIEW_MAX_AGE_HOURS', 24)),
+    'BATCH_SIZE': int(os.environ.get('REVIEW_BATCH_SIZE', 50)),
+    
+    # Modal service settings
+    'MODAL_APP_NAME': os.environ.get('MODAL_APP_NAME', 'hotel-review-analyzer'),
+    'MODAL_FUNCTION_NAME': os.environ.get('MODAL_FUNCTION_NAME', 'analyze_reviews_batch'),
+    'MODAL_TIMEOUT_SECONDS': int(os.environ.get('MODAL_TIMEOUT', 1800)),
+    
+    # Retry settings
+    'MAX_RETRIES': int(os.environ.get('REVIEW_MAX_RETRIES', 3)),
+    'RETRY_DELAY_SECONDS': int(os.environ.get('REVIEW_RETRY_DELAY', 60)),
+    
+    # Notification settings
+    'ADMIN_EMAIL': os.environ.get('ADMIN_EMAIL', ''),
+    'SEND_ERROR_NOTIFICATIONS': os.environ.get('SEND_ERROR_NOTIFICATIONS', 'False').lower() == 'true',
+}
+
 
 # Application definition
 
@@ -44,7 +66,8 @@ INSTALLED_APPS = [
     'core',
     'user',
     'rest_framework.authtoken',
-    'recipe'
+    'recipe',
+    'reviews',
 ]
 
 MIDDLEWARE = [
@@ -136,5 +159,81 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL='core.User'
 
 REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',  # For browsable API
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 20,
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
+        'rest_framework.filters.SearchFilter',
+        'rest_framework.filters.OrderingFilter',
+    ],
+}
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.FileHandler',
+            'filename': 'reviews.log',
+            'formatter': 'verbose',
+        },
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+    },
+    'loggers': {
+        'reviews': {
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+    },
+}
+
+# Environment-specific settings
+DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
+
+if DEBUG:
+    # Development settings
+    REVIEW_ANALYSIS_SETTINGS['CRON_INTERVAL_MINUTES'] = 5
+    ALLOWED_HOSTS = ['*']
+else:
+    # Production settings
+    REVIEW_ANALYSIS_SETTINGS['CRON_INTERVAL_MINUTES'] = 1440  # 24 hours
+    ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',')
+
+# Cache settings (optional - for better performance)
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': os.environ.get('REDIS_URL', 'redis://127.0.0.1:6379/1'),
+    }
+} if os.environ.get('REDIS_URL') else {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
+    }
 }

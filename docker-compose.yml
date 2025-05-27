@@ -1,3 +1,5 @@
+# Updated docker-compose.yml with review processing support
+
 version: "3.9"
 
 services:
@@ -10,17 +12,30 @@ services:
       - "8000:8000"
     volumes:
       - ./app:/app
+      - ./logs:/app/logs  # Add logs volume
+      - ~/.modal:/root/.modal
     command: >
       sh -c "python manage.py wait_for_db &&
              python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
              python manage.py runserver 0.0.0.0:8000"
     environment:
       - DB_HOST=db
       - DB_NAME=devdb
       - DB_USER=devuser
       - DB_PASS=changeme
+      - DEBUG=true
+      - REVIEW_CRON_INTERVAL=5  # 5 minutes for development
+      - MODAL_APP_NAME=hotel-review-analyzer
+      - ADMIN_EMAIL=markminj@gmail.com
+      - MODAL_TOKEN_ID=ak-fdhXPa5QN7rTubEptCrdNM
+      - MODAL_TOKEN_SECRET=as-a5JTMFiiCoX93DYjhyIUgP
+      - MODAL_ENVIRONMENT=${MODAL_ENVIRONMENT:-main}
+      - PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
     depends_on:
       - db
+      - redis
+    user: root  # Temporary for debugging Modal issues
 
   db:
     image: postgres:13-alpine
@@ -31,5 +46,49 @@ services:
       - POSTGRES_USER=devuser
       - POSTGRES_PASSWORD=changeme
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  # Cron job service for review processing
+  review-processor:
+    build:
+      context: .
+      args:
+        - DEV=true
+    volumes:
+      - ./app:/app
+      - ./logs:/app/logs
+      - ~/.modal:/root/.modal
+    command: >
+      sh -c "python manage.py wait_for_db &&
+             while true; do
+               python manage.py process_reviews --batch-size=20;
+               sleep 300;
+             done"
+    environment:
+      - DB_HOST=db
+      - DB_NAME=devdb 
+      - DB_USER=devuser
+      - DB_PASS=changeme
+      - DEBUG=true
+      - REVIEW_CRON_INTERVAL=5
+      - MODAL_APP_NAME=hotel-review-analyzer
+      - ADMIN_EMAIL=markminj@gmail.com
+      - MODAL_TOKEN_ID=ak-fdhXPa5QN7rTubEptCrdNM
+      - MODAL_TOKEN_SECRET=as-a5JTMFiiCoX93DYjhyIUgP
+      - MODAL_ENVIRONMENT=${MODAL_ENVIRONMENT:-main}
+      - PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    user: root  # Temporary for debugging Modal issues
+
 volumes:
   dev-db-data:
+  redis-data:
+  logs:
