@@ -28,7 +28,7 @@ SECRET_KEY = 'django-insecure-kutm#q4$thg3q&**fn0^9%&8o(^l+ewxrtuho)qoyh8mjpz#yl
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*'] 
 
 # Review Analysis Settings
 REVIEW_ANALYSIS_SETTINGS = {
@@ -68,9 +68,11 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'recipe',
     'reviews',
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -79,6 +81,82 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "http://localhost:8080",  # Common Vue.js port
+    "http://127.0.0.1:8080",
+    # Add your actual frontend URL here
+]
+CORS_ALLOW_CREDENTIALS = True
+
+CORS_ALLOW_HEADERS = [
+    # Standard headers
+    'accept',
+    'accept-encoding',
+    'accept-language',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-requested-with',
+    'cache-control',
+    'pragma',
+    
+    # Django specific
+    'x-csrftoken',
+    
+    # Tracing and monitoring headers
+    'baggage',
+    'sentry-trace',
+    'traceparent',
+    'tracestate',
+    'x-trace-id',
+    'x-span-id',
+    
+    # Custom application headers
+    'x-idt',
+    'x-correlation-id',
+    'x-request-id',
+    'x-session-id',
+    'x-tenant-id',
+    'x-api-key',
+    'x-client-version',
+    'xat',  # Added to fix CORS issue
+    
+    # Common proxy/load balancer headers
+    'x-forwarded-for',
+    'x-forwarded-proto',
+    'x-real-ip',
+    
+    # Security headers
+    'x-content-type-options',
+    'x-frame-options',
+]
+
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+
+CORS_EXPOSE_HEADERS = [
+    'content-type',
+    'x-csrftoken',
+    'x-total-count',
+    'x-page-count',
+]
+
+# CORS preflight max age
+CORS_PREFLIGHT_MAX_AGE = 86400
 
 ROOT_URLCONF = 'app.urls'
 
@@ -150,6 +228,13 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.0/howto/static-files/
 
 STATIC_URL = 'static/'
+
+# Add this line:
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# Also add this for media files (optional but recommended):
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.0/ref/settings/#default-auto-field
@@ -236,4 +321,12 @@ CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
     }
+}
+
+# Analytics settings
+ANALYTICS_SETTINGS = {
+    'CACHE_TIMEOUT': 300,  # 5 minutes
+    'MAX_DAILY_SNAPSHOTS': 90,  # 3 months
+    'MAX_WEEKLY_SNAPSHOTS': 104,  # 2 years
+    'MAX_MONTHLY_SNAPSHOTS': 36,  # 3 years
 }

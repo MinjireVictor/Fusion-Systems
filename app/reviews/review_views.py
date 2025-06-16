@@ -16,7 +16,7 @@ from django.core.management import call_command
 import json
 
 from .models import Review, AnalysisResult, AnalysisBatch
-from .serializers import (
+from .review_serializers import (
     ReviewSerializer,
     ReviewWithAnalysisSerializer,
     AnalysisResultSerializer,
@@ -63,13 +63,13 @@ class ReviewViewSet(viewsets.ModelViewSet):
         if date_to:
             queryset = queryset.filter(submission_date__lte=date_to)
         
-        # Filter by analysis status
+        # Filter by analysis status - FIXED: Changed from analysisresult to analysis
         has_analysis = self.request.query_params.get('has_analysis')
         if has_analysis is not None:
             if has_analysis.lower() == 'true':
-                queryset = queryset.filter(analysisresult__isnull=False)
+                queryset = queryset.filter(analysis__isnull=False)
             else:
-                queryset = queryset.filter(analysisresult__isnull=True)
+                queryset = queryset.filter(analysis__isnull=True)
         
         return queryset.order_by('-submission_date')
     
@@ -122,7 +122,8 @@ class ReviewViewSet(viewsets.ModelViewSet):
     def with_analysis(self, request):
         """Get reviews with their analysis results"""
         queryset = self.filter_queryset(self.get_queryset())
-        queryset = queryset.select_related('analysisresult')
+        # FIXED: Changed from analysisresult to analysis
+        queryset = queryset.select_related('analysis')
         
         page = self.paginate_queryset(queryset)
         if page is not None:
@@ -172,10 +173,11 @@ class ReviewViewSet(viewsets.ModelViewSet):
         topic_distribution = defaultdict(int)
         processed_count = 0
         
-        for review in reviews.select_related('analysisresult'):
-            if hasattr(review, 'analysisresult'):
+        # FIXED: Changed from analysisresult to analysis
+        for review in reviews.select_related('analysis'):
+            if hasattr(review, 'analysis') and review.analysis:
                 processed_count += 1
-                analysis = review.analysisresult
+                analysis = review.analysis
                 sentiment_distribution[analysis.primary_sentiment] += 1
                 topic_distribution[analysis.primary_topic] += 1
         
@@ -227,13 +229,14 @@ class ReviewViewSet(viewsets.ModelViewSet):
         """Get analysis result for a specific review"""
         review = self.get_object()
         
-        if not hasattr(review, 'analysisresult'):
+        # FIXED: Changed from analysisresult to analysis
+        if not hasattr(review, 'analysis') or not review.analysis:
             return Response(
                 {'error': 'Analysis not available for this review'},
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        serializer = AnalysisResultSerializer(review.analysisresult)
+        serializer = AnalysisResultSerializer(review.analysis)
         return Response(serializer.data)
 
 
@@ -448,9 +451,9 @@ def analysis_dashboard(request):
             'pending_batches': batches.filter(status__in=['pending', 'processing']).count()
         }
         
-        # Get hotel breakdown
+        # Get hotel breakdown - FIXED: Changed from analysisresult to analysis
         hotel_stats = {}
-        for review in Review.objects.select_related('analysisresult'):
+        for review in Review.objects.select_related('analysis'):
             hotel_key = f"{review.hotel_name} ({review.hotel_id})"
             if hotel_key not in hotel_stats:
                 hotel_stats[hotel_key] = {
@@ -463,7 +466,7 @@ def analysis_dashboard(request):
             hotel_stats[hotel_key]['total_reviews'] += 1
             hotel_stats[hotel_key]['rating_sum'] += float(review.rating)
             
-            if hasattr(review, 'analysisresult'):
+            if hasattr(review, 'analysis') and review.analysis:
                 hotel_stats[hotel_key]['analyzed_reviews'] += 1
         
         # Calculate averages
@@ -521,7 +524,8 @@ def hotel_insights(request, hotel_id):
         
         # Basic statistics
         total_reviews = reviews.count()
-        analyzed_reviews = reviews.filter(analysisresult__isnull=False)
+        # FIXED: Changed from analysisresult to analysis
+        analyzed_reviews = reviews.filter(analysis__isnull=False)
         analyzed_count = analyzed_reviews.count()
         
         # Rating statistics
@@ -537,7 +541,7 @@ def hotel_insights(request, hotel_id):
         sentiment_by_rating = {}
         
         for review in analyzed_reviews:
-            analysis = review.analysisresult
+            analysis = review.analysis
             sentiment = analysis.primary_sentiment
             rating_key = str(int(review.rating))
             
@@ -554,7 +558,7 @@ def hotel_insights(request, hotel_id):
         topic_by_rating = {}
         
         for review in analyzed_reviews:
-            analysis = review.analysisresult
+            analysis = review.analysis
             topic = analysis.primary_topic
             rating_key = str(int(review.rating))
             
@@ -593,7 +597,7 @@ def hotel_insights(request, hotel_id):
                 'overall_distribution': dict(sorted(topic_stats.items(), key=lambda x: x[1], reverse=True)),
                 'by_rating': topic_by_rating
             },
-            'recommendations': self.generate_hotel_recommendations(sentiment_stats, topic_stats, avg_rating),
+            'recommendations': generate_hotel_recommendations(sentiment_stats, topic_stats, avg_rating),
             'last_updated': timezone.now().isoformat()
         }
         

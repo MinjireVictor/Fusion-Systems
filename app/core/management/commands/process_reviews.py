@@ -10,12 +10,13 @@ from django.db import transaction
 from typing import List, Dict, Any
 
 from reviews.models import Review, AnalysisResult, AnalysisBatch
-
+# from reviews.analytics_computer import compute_analytics
+from reviews.analytics_computer import compute_analytics
 # Configure logging
 logger = logging.getLogger('reviews')
 
 class Command(BaseCommand):
-    help = 'Process unanalyzed reviews using Modal NLP service'
+    help = 'Process unanalyzed reviews using Modal NLP service and compute analytics'
     
     def add_arguments(self, parser):
         parser.add_argument(
@@ -50,6 +51,21 @@ class Command(BaseCommand):
             action='store_true',
             help='Test Modal connection and exit'
         )
+        parser.add_argument(
+            '--skip-analytics',
+            action='store_true',
+            help='Skip analytics computation (only process reviews)'
+        )
+        parser.add_argument(
+            '--analytics-only',
+            action='store_true',
+            help='Only compute analytics (skip review processing)'
+        )
+        parser.add_argument(
+            '--force-analytics',
+            action='store_true',
+            help='Force recomputation of analytics snapshots'
+        )
     
     def handle(self, *args, **options):
         """Main command handler"""
@@ -64,6 +80,9 @@ class Command(BaseCommand):
         force = options['force']
         dry_run = options['dry_run']
         hotel_id = options['hotel_id']
+        skip_analytics = options['skip_analytics']
+        analytics_only = options['analytics_only']
+        force_analytics = options['force_analytics']
         
         self.stdout.write(
             self.style.SUCCESS(
@@ -73,52 +92,22 @@ class Command(BaseCommand):
         logger.info(f"Starting review processing job - batch_size: {batch_size}, max_age_hours: {max_age_hours}")
         
         try:
-            # Get reviews to process
-            reviews_to_process = self.get_reviews_to_process(
-                max_age_hours, force, hotel_id
-            )
+            affected_hotels = set()
             
-            if not reviews_to_process:
-                self.stdout.write(
-                    self.style.WARNING("No reviews found to process")
+            # Phase 1: Process Reviews (unless analytics-only)
+            if not analytics_only:
+                affected_hotels = self._process_reviews(
+                    batch_size, max_age_hours, force, dry_run, hotel_id
                 )
-                logger.info("No reviews found to process")
-                return
+            
+            # Phase 2: Compute Analytics (unless skip-analytics or dry-run)
+            if not skip_analytics and not dry_run:
+                self._compute_analytics(affected_hotels, hotel_id, force_analytics)
             
             self.stdout.write(
-                f"Found {len(reviews_to_process)} reviews to process"
+                self.style.SUCCESS("All processing completed successfully!")
             )
-            logger.info(f"Found {len(reviews_to_process)} reviews to process")
-            
-            if dry_run:
-                self.show_dry_run_info(reviews_to_process)
-                return
-            
-            # Process reviews in batches
-            total_processed = 0
-            total_failed = 0
-            
-            for i in range(0, len(reviews_to_process), batch_size):
-                batch = reviews_to_process[i:i + batch_size]
-                processed, failed = self.process_batch(batch)
-                total_processed += processed
-                total_failed += failed
-                
-                self.stdout.write(
-                    f"Batch {i//batch_size + 1}: "
-                    f"Processed {processed}, Failed {failed}"
-                )
-                logger.info(f"Batch {i//batch_size + 1}: Processed {processed}, Failed {failed}")
-            
-            # Summary
-            self.stdout.write(
-                self.style.SUCCESS(
-                    f"Processing complete! "
-                    f"Total processed: {total_processed}, "
-                    f"Total failed: {total_failed}"
-                )
-            )
-            logger.info(f"Processing complete - Total processed: {total_processed}, Total failed: {total_failed}")
+            logger.info("All processing completed successfully")
             
         except Exception as e:
             self.stdout.write(
@@ -126,6 +115,97 @@ class Command(BaseCommand):
             )
             logger.error(f"Command failed: {str(e)}", exc_info=True)
             raise CommandError(f"Processing failed: {e}")
+    
+    def _process_reviews(self, batch_size, max_age_hours, force, dry_run, hotel_id):
+        """Process reviews and return affected hotel IDs"""
+        affected_hotels = set()
+        
+        # Get reviews to process
+        reviews_to_process = self.get_reviews_to_process(
+            max_age_hours, force, hotel_id
+        )
+        
+        if not reviews_to_process:
+            self.stdout.write(
+                self.style.WARNING("No reviews found to process")
+            )
+            logger.info("No reviews found to process")
+            return affected_hotels
+        
+        self.stdout.write(
+            f"Found {len(reviews_to_process)} reviews to process"
+        )
+        logger.info(f"Found {len(reviews_to_process)} reviews to process")
+        
+        # Collect affected hotels
+        for review in reviews_to_process:
+            affected_hotels.add(review.hotel_id)
+        
+        if dry_run:
+            self.show_dry_run_info(reviews_to_process)
+            return affected_hotels
+        
+        # Process reviews in batches
+        total_processed = 0
+        total_failed = 0
+        
+        for i in range(0, len(reviews_to_process), batch_size):
+            batch = reviews_to_process[i:i + batch_size]
+            processed, failed = self.process_batch(batch)
+            total_processed += processed
+            total_failed += failed
+            
+            self.stdout.write(
+                f"Batch {i//batch_size + 1}: "
+                f"Processed {processed}, Failed {failed}"
+            )
+            logger.info(f"Batch {i//batch_size + 1}: Processed {processed}, Failed {failed}")
+        
+        # Summary
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Review processing complete! "
+                f"Total processed: {total_processed}, "
+                f"Total failed: {total_failed}"
+            )
+        )
+        logger.info(f"Review processing complete - Total processed: {total_processed}, Total failed: {total_failed}")
+        
+        return affected_hotels
+    
+    def _compute_analytics(self, affected_hotels, hotel_id, force_analytics):
+        """Compute analytics for affected hotels"""
+        self.stdout.write("Starting analytics computation...")
+        logger.info("Starting analytics computation")
+        
+        try:
+            # Determine which hotels to process
+            hotels_to_process = None
+            if hotel_id:
+                hotels_to_process = [hotel_id]
+            elif affected_hotels:
+                hotels_to_process = list(affected_hotels)
+            # If neither, compute_analytics will process all active hotels
+            
+            # Compute analytics
+            compute_analytics(
+                hotel_ids=hotels_to_process,
+                force_recompute=force_analytics
+            )
+            
+            hotel_count = len(hotels_to_process) if hotels_to_process else "all"
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"Analytics computation completed for {hotel_count} hotels"
+                )
+            )
+            logger.info(f"Analytics computation completed for {hotel_count} hotels")
+            
+        except Exception as e:
+            # Don't fail the entire command if analytics fails
+            error_msg = f"Analytics computation failed: {str(e)}"
+            self.stdout.write(self.style.WARNING(error_msg))
+            logger.warning(error_msg, exc_info=True)
     
     def test_modal_connection(self):
         """Test Modal import and connection"""
