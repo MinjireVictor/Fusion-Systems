@@ -51,6 +51,71 @@ REVIEW_ANALYSIS_SETTINGS = {
     'SEND_ERROR_NOTIFICATIONS': os.environ.get('SEND_ERROR_NOTIFICATIONS', 'False').lower() == 'true',
 }
 
+# PhoneBridge Settings (NEW)
+PHONEBRIDGE_SETTINGS = {
+    # Zoho OAuth Configuration (UPDATED with new credentials ✅)
+    'ZOHO_CLIENT_ID': os.environ.get('ZOHO_CLIENT_ID', '1000.MJGOZDZMF9NJL38KY8XT0TVECIPGOK'),
+    'ZOHO_CLIENT_SECRET': os.environ.get('ZOHO_CLIENT_SECRET', '7b18171a976a2529e44e340b9b5149cc39da8261b3'),
+    
+    # Dynamic redirect URI based on environment (NEW ✅)
+    # 'ZOHO_REDIRECT_URI': os.environ.get('ZOHO_REDIRECT_URI', 
+    #     'http://localhost:8000/phonebridge/zoho/callback' if os.environ.get('DEBUG', 'false').lower() == 'true' 
+    #     else 'https://fusionsystems.co.ke/zoho-callback'
+    # ),
+    'ZOHO_REDIRECT_URI': os.environ.get('ZOHO_REDIRECT_URI', 
+        'https://fusionsystems.co.ke/zoho-callback' if os.environ.get('DEBUG', 'false').lower() == 'true' 
+        else 'https://fusionsystems.co.ke/zoho-callback'
+    ),
+    
+    # OAuth URLs (These will be overridden by location-specific domains)
+    'ZOHO_AUTH_URL': 'https://accounts.zoho.com/oauth/v2/auth',
+    'ZOHO_TOKEN_URL': 'https://accounts.zoho.com/oauth/v2/token',
+    'ZOHO_API_BASE': 'https://www.zohoapis.com',
+    
+    # UPDATED: Combined scopes for PhoneBridge + CRM (NEW ✅)
+    'ZOHO_SCOPES': 'ZohoCRM.modules.ALL,ZohoCRM.users.READ,PhoneBridge.call.log,PhoneBridge.zohoone.search',
+
+    # VitalPBX Configuration (UPDATED with API Key ✅)
+    'VITALPBX_API_BASE': os.environ.get('VITALPBX_API_BASE', 'https://cc.fusionsystems.co.ke/api'),
+    'VITALPBX_API_KEY': os.environ.get('VITALPBX_API_KEY', '36e6b22faea32d0069b1a7bd1da9de82'),  # Primary authentication
+    'VITALPBX_TENANT': os.environ.get('VITALPBX_TENANT', ''),   # Optional tenant
+    
+    # VitalPBX Basic Auth (Fallback - keep existing)
+    'VITALPBX_USERNAME': os.environ.get('VITALPBX_USERNAME', 'T5_'),
+    'VITALPBX_PASSWORD': os.environ.get('VITALPBX_PASSWORD', 'YwFV4YBaQbnZJq'),
+    
+    # General Settings
+    'CALL_TIMEOUT_SECONDS': int(os.environ.get('CALL_TIMEOUT', 30)),
+    'MAX_RETRIES': int(os.environ.get('PHONEBRIDGE_MAX_RETRIES', 3)),
+
+    # Popup Configuration Settings
+    'POPUP_ENABLED': os.environ.get('POPUP_ENABLED', 'true').lower() == 'true',
+    'POPUP_TIMEOUT_SECONDS': int(os.environ.get('POPUP_TIMEOUT_SECONDS', 10)),
+    'CONTACT_LOOKUP_CACHE_TTL': int(os.environ.get('CONTACT_LOOKUP_CACHE_TTL', 300)),
+    'MAX_POPUP_RETRIES': int(os.environ.get('MAX_POPUP_RETRIES', 3)),
+    'INCLUDE_CALL_HISTORY': os.environ.get('INCLUDE_CALL_HISTORY', 'true').lower() == 'true',
+    'INCLUDE_RECENT_NOTES': os.environ.get('INCLUDE_RECENT_NOTES', 'true').lower() == 'true',
+
+    # PhoneBridge API Configuration
+    'PHONEBRIDGE_API_URL': os.environ.get('PHONEBRIDGE_API_URL', 'https://www.zohoapis.com/phonebridge/v3'),
+    'PHONEBRIDGE_POPUP_ENDPOINT': os.environ.get('PHONEBRIDGE_POPUP_ENDPOINT', '/calls/popup'),
+    'PHONEBRIDGE_CONTROL_ENDPOINT': os.environ.get('PHONEBRIDGE_CONTROL_ENDPOINT', '/calls/control'),
+
+    # Performance Settings
+    'MAX_CONCURRENT_POPUPS': int(os.environ.get('MAX_CONCURRENT_POPUPS', 50)),
+    'POPUP_RETRY_DELAY_SECONDS': int(os.environ.get('POPUP_RETRY_DELAY', 60)),
+    'CALL_LOG_RETENTION_DAYS': int(os.environ.get('CALL_LOG_RETENTION_DAYS', 90)),
+
+    # Phone Number Normalization
+    'DEFAULT_COUNTRY_CODE': os.environ.get('DEFAULT_COUNTRY_CODE', 'kenya'),
+    
+    # NEW: OAuth Migration Settings (✅)
+    'OAUTH_MIGRATION_ENABLED': os.environ.get('OAUTH_MIGRATION_ENABLED', 'true').lower() == 'true',
+    'OAUTH_AUTO_REFRESH': os.environ.get('OAUTH_AUTO_REFRESH', 'true').lower() == 'true',
+    'OAUTH_FALLBACK_TO_US': os.environ.get('OAUTH_FALLBACK_TO_US', 'true').lower() == 'true',
+    'OAUTH_SERVER_INFO_TIMEOUT': int(os.environ.get('OAUTH_SERVER_INFO_TIMEOUT', 10)),
+    'OAUTH_TOKEN_REFRESH_MARGIN_MINUTES': int(os.environ.get('OAUTH_TOKEN_REFRESH_MARGIN_MINUTES', 5)),
+}
 
 # Application definition
 
@@ -69,6 +134,7 @@ INSTALLED_APPS = [
     'recipe',
     'reviews',
     'corsheaders',
+    'phonebridge',  # NEW: Add phonebridge app
 ]
 
 MIDDLEWARE = [
@@ -292,11 +358,29 @@ LOGGING = {
             'level': 'INFO',
             'propagate': True,
         },
+        'phonebridge': {  # NEW: Add phonebridge logging
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
         'django': {
             'handlers': ['console'],
             'level': 'INFO',
         },
     },
+}
+
+LOGGING['loggers']['phonebridge'] = {
+    'handlers': ['file', 'console'],
+    'level': 'INFO',
+    'propagate': True,
+}
+
+# Optional: Add specific PhoneBridge OAuth logging
+LOGGING['loggers']['phonebridge.oauth'] = {
+    'handlers': ['file', 'console'], 
+    'level': 'DEBUG' if DEBUG else 'INFO',
+    'propagate': False,  # Don't propagate to avoid duplicate logs
 }
 
 # Environment-specific settings

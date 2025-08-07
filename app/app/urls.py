@@ -30,6 +30,6 @@ urlpatterns = [
     ),
     path('api/user/', include('user.urls')),
     path('api/recipe/', include('recipe.urls')),
-    # Add this line for reviews app
     path('reviews/', include('reviews.urls')),
+    path('phonebridge/', include('phonebridge.urls')),  # NEW: Add phonebridge URLs
 ]

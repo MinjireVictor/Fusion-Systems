@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhoneBridge - VitalPBX & Zoho Integration</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header {
+            border-bottom: 1px solid #eee;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        .status-card {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .status-connected {
+            border-color: #28a745;
+            background-color: #d4edda;
+        }
+        .status-disconnected {
+            border-color: #dc3545;
+            background-color: #f8d7da;
+        }
+        .btn {
+            display: inline-block;
+            padding: 8px 16px;
+            margin: 5px;
+            background: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .btn-danger {
+            background: #dc3545;
+        }
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        .table th, .table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        .table th {
+            background-color: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>PhoneBridge Dashboard</h1>
+            <p>VitalPBX & Zoho CRM Integration</p>
+        </div>
+
+        <!-- Zoho Connection Status -->
+        <div class="status-card {% if zoho_connected %}status-connected{% else %}status-disconnected{% endif %}">
+            <h3>Zoho Connection</h3>
+            {% if zoho_connected %}
+                <p>✅ Connected to Zoho CRM</p>
+                <form method="post" action="{% url 'phonebridge:zoho_disconnect' %}" style="display: inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">Disconnect</button>
+                </form>
+            {% else %}
+                <p>❌ Not connected to Zoho CRM</p>
+                <a href="{% url 'phonebridge:zoho_connect' %}" class="btn">Connect to Zoho</a>
+            {% endif %}
+        </div>
+
+        <!-- Extension Mappings -->
+        <div class="status-card">
+            <h3>Your Extensions</h3>
+            {% if extensions %}
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Extension</th>
+                            <th>Zoho User ID</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ext in extensions %}
+                        <tr>
+                            <td>{{ ext.extension }}</td>
+                            <td>{{ ext.zoho_user_id|default:"Not set" }}</td>
+                            <td>{% if ext.is_active %}Active{% else %}Inactive{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p>No extensions mapped yet.</p>
+            {% endif %}
+            <a href="{% url 'phonebridge:extensions' %}" class="btn">Manage Extensions</a>
+        </div>
+
+        <!-- Recent Calls -->
+        <div class="status-card">
+            <h3>Recent Calls</h3>
+            {% if recent_calls %}
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Direction</th>
+                            <th>From</th>
+                            <th>To</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for call in recent_calls %}
+                        <tr>
+                            <td>{{ call.start_time|date:"M d, H:i" }}</td>
+                            <td>{{ call.direction|title }}</td>
+                            <td>{{ call.caller_number }}</td>
+                            <td>{{ call.called_number }}</td>
+                            <td>{{ call.status|title }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p>No call logs yet.</p>
+            {% endif %}
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="status-card">
+            <h3>Quick Actions</h3>
+            <a href="{% url 'phonebridge:test_vitalpbx' %}" class="btn">Test VitalPBX</a>
+            <a href="{% url 'phonebridge:test_zoho' %}" class="btn">Test Zoho</a>
+            <a href="{% url 'phonebridge:setup' %}" class="btn">Setup</a>
+        </div>
+    </div>
+</body>
+</html>

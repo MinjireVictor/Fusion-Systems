@@ -1,4 +1,4 @@
-# Updated docker-compose.yml with review processing support
+# Updated docker-compose.yml with review processing support and PhoneBridge
 
 version: "3.9"
 
@@ -32,6 +32,35 @@ services:
       - MODAL_TOKEN_SECRET=as-a5JTMFiiCoX93DYjhyIUgP
       - MODAL_ENVIRONMENT=${MODAL_ENVIRONMENT:-main}
       - PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
+      # PhoneBridge Environment Variables (NEW)
+      - ZOHO_CLIENT_ID=${ZOHO_CLIENT_ID}
+      - ZOHO_CLIENT_SECRET=${ZOHO_CLIENT_SECRET}
+      - ZOHO_REDIRECT_URI=${ZOHO_REDIRECT_URI}
+      - VITALPBX_API_BASE=https://cc.fusionsystems.co.ke/api
+      - VITALPBX_USERNAME=${VITALPBX_USERNAME}
+      - VITALPBX_PASSWORD=${VITALPBX_PASSWORD}
+      - VITALPBX_API_KEY=${VITALPBX_API_KEY}
+      - CALL_TIMEOUT=30
+      - PHONEBRIDGE_MAX_RETRIES=3
+      - POPUP_ENABLED=true
+      - POPUP_TIMEOUT_SECONDS=10
+      - CONTACT_LOOKUP_CACHE_TTL=300
+      - MAX_POPUP_RETRIES=3
+      - INCLUDE_CALL_HISTORY=true
+      - INCLUDE_RECENT_NOTES=true
+
+      # NEW: PhoneBridge API Configuration
+      - PHONEBRIDGE_API_URL=https://www.zohoapis.com/phonebridge/v3
+      - PHONEBRIDGE_POPUP_ENDPOINT=/calls/popup
+      - PHONEBRIDGE_CONTROL_ENDPOINT=/calls/control
+
+      # NEW: Performance Settings
+      - MAX_CONCURRENT_POPUPS=50
+      - POPUP_RETRY_DELAY=60
+      - CALL_LOG_RETENTION_DAYS=90
+
+      # NEW: Phone Number Settings
+      - DEFAULT_COUNTRY_CODE=kenya
     depends_on:
       - db
       - redis

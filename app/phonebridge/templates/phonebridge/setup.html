@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhoneBridge Setup</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .config-section {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 8px 16px;
+            margin: 5px;
+            background: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PhoneBridge Setup</h1>
+        <a href="{% url 'phonebridge:home' %}" class="btn">← Back to Dashboard</a>
+
+        <div class="config-section">
+            <h3>Zoho Configuration</h3>
+            <p><strong>Client ID:</strong> {{ phonebridge_settings.ZOHO_CLIENT_ID|default:"Not configured" }}</p>
+            <p><strong>Redirect URI:</strong> {{ phonebridge_settings.ZOHO_REDIRECT_URI }}</p>
+            <p><strong>Scopes:</strong> {{ phonebridge_settings.ZOHO_SCOPES }}</p>
+        </div>
+
+        <div class="config-section">
+            <h3>VitalPBX Configuration</h3>
+            <p><strong>API Base:</strong> {{ phonebridge_settings.VITALPBX_API_BASE }}</p>
+            <p><strong>Username:</strong> {{ phonebridge_settings.VITALPBX_USERNAME|default:"Not configured" }}</p>
+            <p><strong>Timeout:</strong> {{ phonebridge_settings.CALL_TIMEOUT_SECONDS }} seconds</p>
+        </div>
+
+        <div class="config-section">
+            <h3>Environment Variables</h3>
+            <p>Make sure these are set in your environment:</p>
+            <pre>
+ZOHO_CLIENT_ID=your_client_id
+ZOHO_CLIENT_SECRET=your_client_secret
+VITALPBX_USERNAME=your_username
+VITALPBX_PASSWORD=your_password
+            </pre>
+        </div>
+
+        <div class="config-section">
+            <h3>Test Connections</h3>
+            <a href="{% url 'phonebridge:test_vitalpbx' %}" class="btn">Test VitalPBX</a>
+            <a href="{% url 'phonebridge:test_zoho' %}" class="btn">Test Zoho</a>
+        </div>
+    </div>
+</body>
+</html>
