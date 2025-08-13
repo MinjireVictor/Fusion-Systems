@@ -42,7 +42,7 @@ services:
       - ZOHO_CLIENT_SECRET=7b18171a976a2529e44e340b9b5149cc39da8261b3
       
       # UPDATED: Simple redirect URI (matches Zoho partnership config)
-      - ZOHO_REDIRECT_URI=http://zoho.fusionsystems.co.ke
+      - ZOHO_REDIRECT_URI=https://zoho.fusionsystems.co.ke
       
       # UPDATED: PhoneBridge specific scopes
       - ZOHO_SCOPES=PhoneBridge.call.log,PhoneBridge.zohoone.search
