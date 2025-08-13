@@ -70,22 +70,18 @@ class ZohoLocationService:
 
 
 class ZohoService:
-    """Enhanced service for Zoho APIs with location-aware PhoneBridge OAuth"""
+    """Enhanced service for Zoho APIs with HTTP development mode support"""
     
     def __init__(self):
         self.config = settings.PHONEBRIDGE_SETTINGS
         self.client_id = self.config['ZOHO_CLIENT_ID']
         self.client_secret = self.config['ZOHO_CLIENT_SECRET']
         
-        # Dynamic redirect URI based on environment
-        if settings.DEBUG:
-            # self.redirect_uri = 'http://localhost:8000/phonebridge/zoho/callback'
-            self.redirect_uri = 'https://fusionsystems.co.ke/zoho-callback'
-        else:
-            self.redirect_uri = self.config.get('ZOHO_REDIRECT_URI', 'https://fusionsystems.co.ke/zoho-callback')
+        # UPDATED: Use the redirect URI from settings/environment
+        self.redirect_uri = self.config.get('ZOHO_REDIRECT_URI')
         
-        # Updated scopes for PhoneBridge + CRM
-        self.scopes = 'ZohoCRM.modules.ALL,ZohoCRM.users.READ,PhoneBridge.call.log,PhoneBridge.zohoone.search'
+        # UPDATED: Use simpler scopes for PhoneBridge as per documentation
+        self.scopes = self.config.get('ZOHO_SCOPES', 'PhoneBridge.call.log,PhoneBridge.zohoone.search')
         
         # Default domains (will be overridden by location-specific ones)
         self.default_auth_url = 'https://accounts.zoho.com/oauth/v2/auth'
@@ -94,10 +90,15 @@ class ZohoService:
         
         self.location_service = ZohoLocationService()
         
-        logger.info(f"Enhanced Zoho Service initialized")
+        # UPDATED: HTTP development mode support
+        self.http_mode = self.config.get('HTTP_DEVELOPMENT_MODE', settings.DEBUG)
+        self.skip_ssl_verification = self.config.get('SKIP_SSL_VERIFICATION', False)
+        
+        logger.info(f"Enhanced Zoho Service initialized for HTTP development mode")
         logger.info(f"Client ID: {self.client_id[:20]}... (truncated)")
         logger.info(f"Redirect URI: {self.redirect_uri}")
         logger.info(f"Scopes: {self.scopes}")
+        logger.info(f"HTTP Mode: {self.http_mode}")
     
     def validate_configuration(self) -> Dict:
         """Validate Zoho configuration with new requirements"""
@@ -119,7 +120,11 @@ class ZohoService:
         elif not self.redirect_uri.startswith(('http://', 'https://')):
             issues.append("Redirect URI must be a valid URL")
         
-        # Validate scopes
+        # UPDATED: Check for HTTP in production
+        if self.redirect_uri and self.redirect_uri.startswith('http://') and not settings.DEBUG:
+            warnings.append("Using HTTP redirect URI in production mode - consider HTTPS")
+        
+        # UPDATED: Validate new simpler scopes for PhoneBridge
         required_scopes = ['PhoneBridge.call.log', 'PhoneBridge.zohoone.search']
         current_scopes = self.scopes.split(',')
         missing_scopes = [scope for scope in required_scopes if scope not in current_scopes]
@@ -132,6 +137,11 @@ class ZohoService:
         if not server_info.get('success'):
             warnings.append("Could not fetch Zoho server info - will use fallback locations")
         
+        # UPDATED: Check redirect URI format for new server
+        expected_path = '/phonebridge/zoho/callback/'
+        if self.redirect_uri and expected_path not in self.redirect_uri:
+            warnings.append(f"Redirect URI should contain '{expected_path}' path")
+        
         return {
             'valid': len(issues) == 0,
             'issues': issues,
@@ -142,7 +152,9 @@ class ZohoService:
                 'redirect_uri': self.redirect_uri,
                 'scopes': self.scopes,
                 'server_info_accessible': server_info.get('success', False),
-                'available_locations': list(server_info.get('locations', {}).keys()) if server_info.get('success') else list(self.location_service.LOCATION_MAPPING.keys())
+                'available_locations': list(server_info.get('locations', {}).keys()) if server_info.get('success') else list(self.location_service.LOCATION_MAPPING.keys()),
+                'http_mode': self.http_mode,
+                'skip_ssl_verification': self.skip_ssl_verification
             }
         }
     
@@ -166,6 +178,7 @@ class ZohoService:
         
         logger.info(f"Generated PhoneBridge auth URL with state: {state[:10]}...")
         logger.info(f"Scopes requested: {self.scopes}")
+        logger.info(f"Redirect URI: {self.redirect_uri}")
         
         return {
             'auth_url': auth_url,
@@ -179,6 +192,7 @@ class ZohoService:
                             received_state: Optional[str] = None) -> Dict:
         """Handle OAuth callback with location parameter"""
         logger.info(f"Handling OAuth callback with location: {location}")
+        logger.info(f"Redirect URI used: {self.redirect_uri}")
         
         # Validate state parameter
         if expected_state and received_state:
@@ -196,7 +210,23 @@ class ZohoService:
             
             if server_info.get('success'):
                 oauth_domain = self.location_service.get_oauth_domain_for_location(location, server_info)
+                # UPDATED: Determine API domain based on location
+                if location == 'eu':
+                    api_domain = 'https://www.zohoapis.eu'
+                elif location == 'in':
+                    api_domain = 'https://www.zohoapis.in'
+                elif location == 'au':
+                    api_domain = 'https://www.zohoapis.com.au'
+                elif location == 'jp':
+                    api_domain = 'https://www.zohoapis.jp'
+                elif location == 'sa':
+                    api_domain = 'https://www.zohoapis.sa'
+                elif location == 'ca':
+                    api_domain = 'https://www.zohoapis.ca'
+                # Default to .com for US and others
+                
                 logger.info(f"Using OAuth domain: {oauth_domain}")
+                logger.info(f"Using API domain: {api_domain}")
             else:
                 logger.warning(f"Server info failed, using fallback for location {location}")
                 oauth_domain = self.location_service.get_oauth_domain_for_location(location)
@@ -230,7 +260,18 @@ class ZohoService:
         
         try:
             logger.info(f"Exchanging code for tokens at: {token_url}")
-            response = requests.post(token_url, data=data, headers=headers, timeout=30)
+            logger.info(f"Using redirect_uri: {self.redirect_uri}")
+            
+            # UPDATED: Handle SSL verification for HTTP development mode
+            verify_ssl = not self.skip_ssl_verification
+            
+            response = requests.post(
+                token_url, 
+                data=data, 
+                headers=headers, 
+                timeout=30,
+                verify=verify_ssl
+            )
             
             logger.info(f"Token exchange response: {response.status_code}")
             
@@ -245,7 +286,7 @@ class ZohoService:
                 expires_in = token_data.get('expires_in', 3600)
                 expires_at = timezone.now() + timedelta(seconds=expires_in)
                 
-                return {
+                result = {
                     'access_token': token_data.get('access_token'),
                     'refresh_token': token_data.get('refresh_token'),
                     'expires_in': expires_in,
@@ -258,6 +299,9 @@ class ZohoService:
                     'oauth_version': 'v3',
                     'raw_response': token_data
                 }
+                
+                logger.info(f"Token details - Location: {result['location']}, API Domain: {result['api_domain']}")
+                return result
             else:
                 logger.error(f"Token exchange failed: {response.status_code}")
                 logger.error(f"Response: {response.text}")
@@ -295,7 +339,16 @@ class ZohoService:
         }
         
         try:
-            response = requests.post(token_url, data=data, headers=headers, timeout=30)
+            # UPDATED: Handle SSL verification for HTTP development mode
+            verify_ssl = not self.skip_ssl_verification
+            
+            response = requests.post(
+                token_url, 
+                data=data, 
+                headers=headers, 
+                timeout=30,
+                verify=verify_ssl
+            )
             
             logger.info(f"Token refresh response: {response.status_code}")
             
@@ -337,17 +390,25 @@ class ZohoService:
             'Accept': 'application/json'
         }
         
-        # Try multiple endpoints
+        # Try multiple endpoints for PhoneBridge
         endpoints = [
+            f"{base_domain}/phonebridge/v3/users/me",
             f"{base_domain}/crm/v2/users?type=CurrentUser",
-            f"{base_domain}/crm/v2/org",
-            f"{base_domain}/phonebridge/v3/users/me"
+            f"{base_domain}/crm/v2/org"
         ]
+        
+        # UPDATED: Handle SSL verification
+        verify_ssl = not self.skip_ssl_verification
         
         for endpoint in endpoints:
             try:
                 logger.info(f"Trying user info endpoint: {endpoint}")
-                response = requests.get(endpoint, headers=headers, timeout=30)
+                response = requests.get(
+                    endpoint, 
+                    headers=headers, 
+                    timeout=30,
+                    verify=verify_ssl
+                )
                 
                 if response.status_code == 200:
                     data = response.json()
@@ -402,12 +463,39 @@ class ZohoService:
             'Accept': 'application/json'
         }
         
-        # Test 1: CRM API connectivity
+        # UPDATED: Handle SSL verification
+        verify_ssl = not self.skip_ssl_verification
+        
+        # Test 1: PhoneBridge API connectivity (primary)
+        try:
+            phonebridge_response = requests.get(
+                f"{base_domain}/phonebridge/v3/calls",
+                headers=headers,
+                timeout=30,
+                verify=verify_ssl
+            )
+            
+            test_results['tests']['phonebridge_api'] = {
+                'success': phonebridge_response.status_code in [200, 404, 405],
+                'status_code': phonebridge_response.status_code,
+                'endpoint': f"{base_domain}/phonebridge/v3/calls",
+                'available': phonebridge_response.status_code == 200,
+                'response_sample': phonebridge_response.text[:200] if phonebridge_response.text else 'Empty response'
+            }
+            
+        except Exception as e:
+            test_results['tests']['phonebridge_api'] = {
+                'success': False,
+                'error': str(e)
+            }
+        
+        # Test 2: CRM API connectivity (fallback)
         try:
             crm_response = requests.get(
                 f"{base_domain}/crm/v2/org",
                 headers=headers,
-                timeout=30
+                timeout=30,
+                verify=verify_ssl
             )
             
             test_results['tests']['crm_api'] = {
@@ -423,60 +511,17 @@ class ZohoService:
                 'error': str(e)
             }
         
-        # Test 2: PhoneBridge API connectivity
-        try:
-            phonebridge_response = requests.get(
-                f"{base_domain}/phonebridge/v3/status",
-                headers=headers,
-                timeout=30
-            )
-            
-            test_results['tests']['phonebridge_api'] = {
-                'success': phonebridge_response.status_code in [200, 404],  # 404 means endpoint exists but method not allowed
-                'status_code': phonebridge_response.status_code,
-                'endpoint': f"{base_domain}/phonebridge/v3/status",
-                'available': phonebridge_response.status_code == 200,
-                'response_sample': phonebridge_response.text[:200] if phonebridge_response.text else 'Empty response'
-            }
-            
-        except Exception as e:
-            test_results['tests']['phonebridge_api'] = {
-                'success': False,
-                'error': str(e)
-            }
-        
         # Test 3: User information
         user_info_result = self.get_user_info(access_token, base_domain)
         test_results['tests']['user_info'] = user_info_result
         
-        # Test 4: Scope validation
-        try:
-            # Try to access PhoneBridge specific endpoint to validate scopes
-            pb_test_response = requests.get(
-                f"{base_domain}/phonebridge/v3/calls",
-                headers=headers,
-                timeout=30
-            )
-            
-            test_results['tests']['phonebridge_scopes'] = {
-                'success': pb_test_response.status_code in [200, 404, 405],  # Not 401/403
-                'status_code': pb_test_response.status_code,
-                'has_permissions': pb_test_response.status_code not in [401, 403]
-            }
-            
-        except Exception as e:
-            test_results['tests']['phonebridge_scopes'] = {
-                'success': False,
-                'error': str(e)
-            }
-        
         # Determine overall success
+        phonebridge_success = test_results['tests'].get('phonebridge_api', {}).get('success', False)
         crm_success = test_results['tests'].get('crm_api', {}).get('success', False)
         user_success = test_results['tests'].get('user_info', {}).get('success', False)
-        pb_access = test_results['tests'].get('phonebridge_api', {}).get('success', False)
         
-        test_results['overall_success'] = crm_success or user_success
-        test_results['phonebridge_available'] = pb_access
+        test_results['overall_success'] = phonebridge_success or crm_success or user_success
+        test_results['phonebridge_available'] = phonebridge_success
         
         if test_results['overall_success']:
             message = 'Zoho connection successful'
@@ -494,135 +539,6 @@ class ZohoService:
                 'details': test_results
             }
     
-    def create_call_log(self, access_token: str, call_data: Dict, api_domain: Optional[str] = None) -> Dict:
-        """Create call log in Zoho CRM"""
-        base_domain = api_domain or self.default_api_base
-        
-        logger.info("Creating call log in Zoho CRM")
-        
-        headers = {
-            'Authorization': f'Bearer {access_token}',
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        }
-        
-        # Prepare call log data for Zoho CRM
-        zoho_call_data = {
-            "data": [
-                {
-                    "Subject": f"Call: {call_data.get('caller_number')} -> {call_data.get('called_number')}",
-                    "Call_Type": call_data.get('direction', 'outbound').title(),
-                    "Call_Start_Time": call_data.get('start_time'),
-                    "Call_Duration": str(call_data.get('duration_seconds', 0)),
-                    "Description": call_data.get('notes', ''),
-                    "Call_Result": call_data.get('status', 'completed').title(),
-                    "Phone": call_data.get('called_number'),
-                    "Caller_ID": call_data.get('caller_number'),
-                    "Who_Id": call_data.get('contact_id'),  # If available
-                    "What_Id": call_data.get('lead_id')     # If available
-                }
-            ]
-        }
-        
-        endpoint = f"{base_domain}/crm/v2/Calls"
-        
-        try:
-            logger.info(f"Posting call log to: {endpoint}")
-            response = requests.post(endpoint, headers=headers, json=zoho_call_data, timeout=30)
-            
-            logger.info(f"Call log response status: {response.status_code}")
-            
-            if response.status_code in [200, 201]:
-                result = response.json()
-                logger.info("Call log created successfully")
-                return {
-                    'success': True,
-                    'data': result,
-                    'zoho_call_id': result.get('data', [{}])[0].get('details', {}).get('id')
-                }
-            else:
-                logger.error(f"Failed to create call log: {response.text}")
-                return {
-                    'success': False,
-                    'error': f"HTTP {response.status_code}: {response.text}"
-                }
-                
-        except Exception as e:
-            logger.error(f"Error creating call log: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e)
-            }
-    
-    def search_contact_by_phone(self, access_token: str, phone_number: str, 
-                              api_domain: Optional[str] = None) -> list:
-        """Search for contact by phone number using location-specific API"""
-        base_domain = api_domain or self.default_api_base
-        
-        logger.info(f"Searching for contact with phone: {phone_number}")
-        
-        headers = {
-            'Authorization': f'Bearer {access_token}',
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        }
-        
-        # Clean phone number for search
-        clean_phone = ''.join(filter(str.isdigit, phone_number))
-        
-        search_modules = ['Contacts', 'Leads']
-        results = []
-        
-        for module in search_modules:
-            try:
-                # Search by phone fields
-                search_url = f"{base_domain}/crm/v2/{module}/search"
-                
-                # Create comprehensive search criteria
-                criteria_list = [
-                    f'Phone:equals:{phone_number}',
-                    f'Mobile:equals:{phone_number}',
-                    f'Phone:equals:{clean_phone}',
-                    f'Mobile:equals:{clean_phone}'
-                ]
-                
-                # Add variants without country code for Kenya numbers
-                if phone_number.startswith('+254'):
-                    local_format = '0' + phone_number[4:]
-                    criteria_list.extend([
-                        f'Phone:equals:{local_format}',
-                        f'Mobile:equals:{local_format}'
-                    ])
-                
-                criteria = '(' + ') or ('.join(criteria_list) + ')'
-                
-                params = {'criteria': criteria}
-                
-                logger.debug(f"Searching {module} with criteria: {criteria}")
-                
-                response = requests.get(search_url, headers=headers, params=params, timeout=30)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    if 'data' in data:
-                        for record in data['data']:
-                            results.append({
-                                'module': module,
-                                'id': record.get('id'),
-                                'name': record.get('Full_Name') or record.get('Last_Name', ''),
-                                'email': record.get('Email'),
-                                'phone': record.get('Phone'),
-                                'mobile': record.get('Mobile'),
-                                'company': record.get('Account_Name', {}).get('name') if module == 'Contacts' else record.get('Company'),
-                                'record': record
-                            })
-                
-            except Exception as e:
-                logger.warning(f"Search failed for {module}: {str(e)}")
-        
-        logger.info(f"Found {len(results)} matching records for {phone_number}")
-        return results
-    
     def validate_phonebridge_scopes(self, access_token: str, api_domain: Optional[str] = None) -> Dict:
         """Validate that token has necessary PhoneBridge scopes"""
         base_domain = api_domain or self.default_api_base
@@ -635,17 +551,23 @@ class ZohoService:
             'Accept': 'application/json'
         }
         
+        # UPDATED: Test PhoneBridge specific endpoints
         scope_tests = {
             'call_log_access': f"{base_domain}/phonebridge/v3/calls",
-            'search_access': f"{base_domain}/phonebridge/v3/search",
-            'user_access': f"{base_domain}/phonebridge/v3/users/me"
+            'search_access': f"{base_domain}/phonebridge/v3/search"
         }
         
         results = {}
+        verify_ssl = not self.skip_ssl_verification
         
         for scope_name, endpoint in scope_tests.items():
             try:
-                response = requests.get(endpoint, headers=headers, timeout=15)
+                response = requests.get(
+                    endpoint, 
+                    headers=headers, 
+                    timeout=15,
+                    verify=verify_ssl
+                )
                 
                 results[scope_name] = {
                     'available': response.status_code not in [401, 403],
@@ -684,9 +606,6 @@ class ZohoService:
         
         if not scope_results.get('search_access', {}).get('available', False):
             recommendations.append("PhoneBridge search access not available - check PhoneBridge.zohoone.search scope")
-        
-        if not scope_results.get('user_access', {}).get('available', False):
-            recommendations.append("PhoneBridge user access limited - may affect popup functionality")
         
         if not recommendations:
             recommendations.append("All PhoneBridge scopes appear to be working correctly")

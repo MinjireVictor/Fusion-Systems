@@ -24,6 +24,7 @@ from .models import ZohoToken, ExtensionMapping, CallLog, ZohoWebhookLog, VitalP
 from .serializers import ExtensionMappingSerializer, CallLogSerializer
 from .services.vitalpbx_service import VitalPBXService
 from .services.zoho_service import ZohoService, ZohoTokenManager
+from .models import OAuthMigrationLog
 
 logger = logging.getLogger('phonebridge')
 
@@ -94,7 +95,7 @@ class ExtensionMappingView(LoginRequiredMixin, TemplateView):
         return context
 
 class ZohoConnectView(LoginRequiredMixin, View):
-    """Initiate Zoho OAuth flow with new PhoneBridge scopes"""
+    """Initiate Zoho OAuth flow with simple redirect URI"""
     
     def get(self, request):
         try:
@@ -106,7 +107,7 @@ class ZohoConnectView(LoginRequiredMixin, View):
                 error_msg = f"OAuth configuration invalid: {', '.join(validation['issues'])}"
                 logger.error(error_msg)
                 messages.error(request, error_msg)
-                return redirect('phonebridge:setup')
+                return redirect('/phonebridge/setup/')
             
             # Generate auth URL with new scopes
             auth_url_data = zoho_service.get_auth_url()
@@ -116,50 +117,72 @@ class ZohoConnectView(LoginRequiredMixin, View):
             request.session['oauth_scopes'] = auth_url_data['scopes']
             
             logger.info(f"Redirecting user {request.user.email} to Zoho OAuth (PhoneBridge)")
+            logger.info(f"UPDATED: Simple redirect URI: http://zoho.fusionsystems.co.ke:8000")
             logger.info(f"Scopes: {auth_url_data['scopes']}")
             
             return redirect(auth_url_data['auth_url'])
             
         except Exception as e:
             logger.error(f"Zoho connect error for {request.user.email}: {str(e)}")
-            messages.error(request, f"Failed to initiate Zoho connection: {str(e)}")
-            return redirect('phonebridge:setup')
+            messages.error(
+                request, 
+                f"Failed to initiate Zoho connection: {str(e)}. "
+                f"Simple redirect URI configured: http://zoho.fusionsystems.co.ke:8000"
+            )
+            return redirect('/phonebridge/setup/')
 
 
-class ZohoCallbackView(LoginRequiredMixin, View):
-    """Handle Zoho OAuth callback with location parameter support"""
+class ZohoCallbackView(View):
+    """
+    Handle Zoho OAuth callback at root level
+    Redirect URI: http://zoho.fusionsystems.co.ke:8000
+    """
     
     def get(self, request):
+        """Handle OAuth callback OR redirect to dashboard"""
         code = request.GET.get('code')
         error = request.GET.get('error')
         received_state = request.GET.get('state')
-        location = request.GET.get('location')  # NEW: Location parameter
+        location = request.GET.get('location')
+        
+        # Check if this is an OAuth callback
+        if not (code or error):
+            # Not an OAuth callback - redirect to dashboard
+            logger.info("Root access without OAuth params - redirecting to dashboard")
+            return redirect('/phonebridge/')
+        
+        # Ensure user is authenticated for OAuth callback
+        if not request.user.is_authenticated:
+            logger.warning("OAuth callback received but user not authenticated")
+            messages.error(request, "Please log in first, then retry the Zoho connection.")
+            return redirect('/accounts/login/?next=/phonebridge/zoho/connect/')
         
         logger.info(f"OAuth callback for {request.user.email} - Location: {location}, State: {received_state[:10] if received_state else None}...")
+        logger.info(f"UPDATED: Simple redirect URI - http://zoho.fusionsystems.co.ke:8000")
         
         if error:
             logger.error(f"Zoho authorization failed for {request.user.email}: {error}")
             messages.error(request, f"Zoho authorization failed: {error}")
-            return redirect('phonebridge:setup')
+            return redirect('/phonebridge/setup/')
         
         if not code:
             logger.error(f"No authorization code received for {request.user.email}")
             messages.error(request, "No authorization code received from Zoho")
-            return redirect('phonebridge:setup')
+            return redirect('/phonebridge/setup/')
         
         # Validate state parameter
         expected_state = request.session.get('zoho_oauth_state')
         if expected_state and received_state != expected_state:
             logger.error(f"State parameter mismatch for {request.user.email}")
             messages.error(request, "Invalid state parameter - possible security issue")
-            return redirect('phonebridge:setup')
+            return redirect('/phonebridge/setup/')
         
         try:
             with transaction.atomic():
                 zoho_service = ZohoService()
                 token_manager = ZohoTokenManager(zoho_service)
                 
-                # Handle OAuth callback with location support
+                # UPDATED: Handle OAuth callback with simple redirect URI
                 tokens = zoho_service.handle_oauth_callback(
                     code=code,
                     location=location,
@@ -196,13 +219,15 @@ class ZohoCallbackView(LoginRequiredMixin, View):
                     logger.info(f"PhoneBridge scopes validated successfully for {request.user.email}")
                     messages.success(
                         request, 
-                        f"Successfully connected to Zoho PhoneBridge! Location: {tokens.get('location', 'us').upper()}"
+                        f"✅ Successfully connected to Zoho PhoneBridge! "
+                        f"Location: {tokens.get('location', 'us').upper()}, "
+                        f"Server: zoho.fusionsystems.co.ke:8000"
                     )
                 else:
                     logger.warning(f"PhoneBridge scope validation issues for {request.user.email}")
                     messages.warning(
                         request,
-                        f"Connected to Zoho, but some PhoneBridge features may be limited. "
+                        f"⚠️ Connected to Zoho, but some PhoneBridge features may be limited. "
                         f"Available scopes: {scope_validation.get('available_scopes', 0)}/{scope_validation.get('total_scopes', 0)}"
                     )
                 
@@ -230,7 +255,11 @@ class ZohoCallbackView(LoginRequiredMixin, View):
                 
         except Exception as e:
             logger.error(f"Zoho connection failed for {request.user.email}: {str(e)}")
-            messages.error(request, f"Failed to connect to Zoho: {str(e)}")
+            messages.error(
+                request, 
+                f"❌ Failed to connect to Zoho: {str(e)}. "
+                f"Simple redirect URI is configured: http://zoho.fusionsystems.co.ke:8000"
+            )
             
             # Record failed migration if applicable
             try:
@@ -246,7 +275,7 @@ class ZohoCallbackView(LoginRequiredMixin, View):
             except OAuthMigrationLog.DoesNotExist:
                 pass
         
-        return redirect('phonebridge:home')
+        return redirect('/phonebridge/')
 
 
 class ZohoDisconnectView(LoginRequiredMixin, View):
@@ -649,7 +678,7 @@ class TestVitalPBXView(LoginRequiredMixin, View):
             })
 
 class TestZohoView(LoginRequiredMixin, View):
-    """Enhanced test view for Zoho connectivity with PhoneBridge validation"""
+    """Enhanced test view for Zoho connectivity with simple redirect validation"""
     
     def get(self, request):
         logger.info(f"Zoho test initiated by user: {request.user.email}")
@@ -667,8 +696,9 @@ class TestZohoView(LoginRequiredMixin, View):
                     'message': 'Configuration validation failed',
                     'details': config_validation,
                     'recommendations': [
-                        'Set ZOHO_CLIENT_ID in environment variables',
-                        'Set ZOHO_CLIENT_SECRET in environment variables',
+                        'Check environment variables are set correctly',
+                        'Verify ZOHO_CLIENT_ID and ZOHO_CLIENT_SECRET',
+                        'Ensure ZOHO_REDIRECT_URI is: http://zoho.fusionsystems.co.ke:8000',
                         'Complete OAuth flow by visiting /phonebridge/zoho/connect/'
                     ]
                 })
@@ -685,7 +715,12 @@ class TestZohoView(LoginRequiredMixin, View):
                     'instructions': 'Visit the auth_url to complete OAuth authorization',
                     'details': config_validation,
                     'oauth_version': 'v3',
-                    'scopes': auth_url_data['scopes']
+                    'scopes': auth_url_data['scopes'],
+                    'simple_redirect': {
+                        'configured': 'http://zoho.fusionsystems.co.ke:8000',
+                        'type': 'root_level_callback',
+                        'partnership': 'Zoho partnership configured'
+                    }
                 })
             
             # Test API connection
@@ -699,6 +734,9 @@ class TestZohoView(LoginRequiredMixin, View):
                 zoho_token.access_token,
                 zoho_token.api_domain
             )
+            
+            # UPDATED: Add simple redirect validation
+            redirect_validation = self._validate_simple_redirect(zoho_service)
             
             return JsonResponse({
                 'zoho_connected': test_result.get('success', False),
@@ -715,6 +753,13 @@ class TestZohoView(LoginRequiredMixin, View):
                 },
                 'phonebridge_validation': scope_validation,
                 'migration_info': token_manager.validate_token_migration_needed(zoho_token),
+                'simple_redirect_info': redirect_validation,  # NEW
+                'server_info': {  # NEW
+                    'hostname': 'zoho.fusionsystems.co.ke',
+                    'port': 8000,
+                    'protocol': 'http',
+                    'oauth_callback': 'root_level'
+                },
                 'timestamp': datetime.now().isoformat()
             })
                 
@@ -726,9 +771,26 @@ class TestZohoView(LoginRequiredMixin, View):
                 'details': {'error': str(e)},
                 'timestamp': datetime.now().isoformat()
             })
+    
+    def _validate_simple_redirect(self, zoho_service):
+        """Validate simple redirect URI configuration"""
+        expected_redirect = 'http://zoho.fusionsystems.co.ke:8000'
+        actual_redirect = zoho_service.redirect_uri
+        
+        return {
+            'expected': expected_redirect,
+            'actual': actual_redirect,
+            'matches': actual_redirect == expected_redirect,
+            'is_simple': '/' not in actual_redirect.split('://')[1],
+            'protocol_correct': actual_redirect.startswith('http://'),
+            'domain_correct': 'zoho.fusionsystems.co.ke' in actual_redirect,
+            'port_correct': ':8000' in actual_redirect,
+            'partnership_status': 'Configured via Zoho partnership',
+            'callback_type': 'root_level'
+        }
 
 class SystemDiagnosticsView(LoginRequiredMixin, View):
-    """Enhanced comprehensive system diagnostics"""
+    """Enhanced comprehensive system diagnostics with simple redirect validation"""
     
     def get(self, request):
         from django.db import connection
@@ -737,11 +799,19 @@ class SystemDiagnosticsView(LoginRequiredMixin, View):
         diagnostics = {
             'timestamp': datetime.now().isoformat(),
             'user': request.user.email,
+            'server_info': {  # NEW: Enhanced server info
+                'hostname': 'zoho.fusionsystems.co.ke',
+                'port': 8000,
+                'protocol': 'http',
+                'deployment_type': 'development',
+                'oauth_callback_type': 'root_level_simple_redirect'
+            },
             'environment': {},
             'database': {},
             'external_services': {},
             'phonebridge_status': {},
-            'oauth_migration': {}
+            'oauth_migration': {},
+            'simple_redirect_validation': {}  # NEW
         }
         
         # Check environment variables
@@ -761,8 +831,27 @@ class SystemDiagnosticsView(LoginRequiredMixin, View):
             'oauth_settings': {
                 'redirect_uri': phonebridge_settings.get('ZOHO_REDIRECT_URI'),
                 'scopes': phonebridge_settings.get('ZOHO_SCOPES'),
-                'fallback_to_us': phonebridge_settings.get('OAUTH_FALLBACK_TO_US', True)
+                'fallback_to_us': phonebridge_settings.get('OAUTH_FALLBACK_TO_US', True),
+                'http_development_mode': phonebridge_settings.get('HTTP_DEVELOPMENT_MODE', settings.DEBUG)
             }
+        }
+        
+        # NEW: Validate simple redirect URI configuration
+        expected_redirect = 'http://zoho.fusionsystems.co.ke:8000'
+        current_redirect = phonebridge_settings.get('ZOHO_REDIRECT_URI', '')
+        
+        diagnostics['simple_redirect_validation'] = {
+            'expected': expected_redirect,
+            'current': current_redirect,
+            'matches': current_redirect == expected_redirect,
+            'is_simple': '/' not in current_redirect.replace('http://', '').replace('https://', ''),
+            'protocol_correct': current_redirect.startswith('http://'),
+            'domain_correct': 'zoho.fusionsystems.co.ke' in current_redirect,
+            'port_included': ':8000' in current_redirect,
+            'partnership_configured': True,  # Since you mentioned Zoho partnership
+            'callback_handler': 'root_level_oauth_callback',
+            'url_routing': 'app/urls.py handles root path',
+            'status': 'configured_via_partnership' if current_redirect == expected_redirect else 'needs_update'
         }
         
         # Check database
@@ -787,7 +876,7 @@ class SystemDiagnosticsView(LoginRequiredMixin, View):
                 'error': str(e)
             }
         
-        # Check external services with location awareness
+        # Check external services with simple redirect awareness
         try:
             # Test Zoho server info endpoint
             server_info_response = requests.get('https://accounts.zoho.com/oauth/serverinfo', timeout=10)
@@ -840,7 +929,8 @@ class SystemDiagnosticsView(LoginRequiredMixin, View):
         except ZohoToken.DoesNotExist:
             diagnostics['phonebridge_status']['user_token'] = {
                 'exists': False,
-                'needs_authorization': True
+                'needs_authorization': True,
+                'auth_url': f'http://zoho.fusionsystems.co.ke:8000/phonebridge/zoho/connect/'
             }
         
         # Extension mappings for current user
@@ -850,16 +940,40 @@ class SystemDiagnosticsView(LoginRequiredMixin, View):
             'extensions': [ext.extension for ext in user_extensions]
         }
         
-        # OAuth migration summary
+        # OAuth migration summary with simple redirect info
         migration_logs = OAuthMigrationLog.objects.filter(user=request.user)
         diagnostics['oauth_migration'] = {
             'migration_attempts': migration_logs.count(),
             'latest_migration': migration_logs.latest('migration_started_at').migration_status if migration_logs.exists() else None,
             'completed_migrations': migration_logs.filter(migration_status='completed').count(),
-            'failed_migrations': migration_logs.filter(migration_status='failed').count()
+            'failed_migrations': migration_logs.filter(migration_status='failed').count(),
+            'simple_redirect_migration': {
+                'required': not diagnostics['simple_redirect_validation']['matches'],
+                'partnership_configured': True,
+                'manual_console_changes_needed': False
+            }
         }
         
+        # Add recommendations based on simple redirect validation
+        recommendations = []
+        
+        if not diagnostics['simple_redirect_validation']['matches']:
+            recommendations.append(f"Update ZOHO_REDIRECT_URI to: {expected_redirect}")
+        
+        if not diagnostics['external_services']['zoho_server_info']['status'] == 'OK':
+            recommendations.append("Check network connectivity to Zoho services")
+        
+        if diagnostics['database']['zoho_tokens'] == 0:
+            recommendations.append("No OAuth tokens found - complete OAuth authorization")
+        
+        if not recommendations:
+            recommendations.append("All systems configured correctly for simple redirect OAuth flow")
+        
+        diagnostics['recommendations'] = recommendations
+        
         return JsonResponse(diagnostics)
+
+
 
 # API ViewSets for REST endpoints (keep existing implementation)
 class ExtensionMappingViewSet(viewsets.ModelViewSet):

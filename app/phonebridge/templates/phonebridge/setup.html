@@ -12,7 +12,7 @@
             background-color: #f5f5f5;
         }
         .container {
-            max-width: 800px;
+            max-width: 900px;
             margin: 0 auto;
             background: white;
             padding: 20px;
@@ -35,49 +35,327 @@
             text-decoration: none;
             border-radius: 4px;
         }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .btn-success {
+            background: #28a745;
+        }
+        .btn-warning {
+            background: #ffc107;
+            color: #212529;
+        }
         pre {
             background: #f8f9fa;
-            padding: 10px;
+            padding: 15px;
             border-radius: 4px;
             overflow-x: auto;
+            border: 1px solid #e9ecef;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        .status-box {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .status-success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .status-error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .status-warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+        .server-banner {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        code {
+            background: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            border: 1px solid #e9ecef;
+        }
+        .highlight {
+            background: #fff3cd;
+            padding: 3px 6px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        .copy-button {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            cursor: pointer;
+            margin-left: 5px;
+        }
+        .copy-button:hover {
+            background: #545b62;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>PhoneBridge Setup</h1>
+        <!-- NEW: Server status banner -->
+        <div class="server-banner">
+            <h2 style="margin: 0;">🚀 PhoneBridge Setup - New Server Configuration</h2>
+            <p style="margin: 5px 0 0 0;">zoho.fusionsystems.co.ke:8000 | HTTP Development Mode | OAuth v3</p>
+        </div>
+
+        <h1>PhoneBridge Setup & Configuration</h1>
         <a href="{% url 'phonebridge:home' %}" class="btn">← Back to Dashboard</a>
 
+        <!-- Enhanced Zoho Configuration -->
         <div class="config-section">
-            <h3>Zoho Configuration</h3>
-            <p><strong>Client ID:</strong> {{ phonebridge_settings.ZOHO_CLIENT_ID|default:"Not configured" }}</p>
-            <p><strong>Redirect URI:</strong> {{ phonebridge_settings.ZOHO_REDIRECT_URI }}</p>
-            <p><strong>Scopes:</strong> {{ phonebridge_settings.ZOHO_SCOPES }}</p>
+            <h3>🔐 Zoho OAuth Configuration (Updated for New Server)</h3>
+            
+            <!-- NEW: Configuration status -->
+            <div class="status-box status-success">
+                <strong>✅ Configuration Updated:</strong> Credentials and redirect URI configured for new server deployment.
+            </div>
+            
+            <div class="grid-2">
+                <div>
+                    <p><strong>Client ID:</strong><br>
+                    <code>{{ phonebridge_settings.ZOHO_CLIENT_ID|default:"Not configured" }}</code></p>
+                    
+                    <p><strong>Client Secret:</strong><br>
+                    <code>{% if phonebridge_settings.ZOHO_CLIENT_SECRET %}***{{ phonebridge_settings.ZOHO_CLIENT_SECRET|slice:"-4:" }}{% else %}Not configured{% endif %}</code></p>
+                </div>
+                <div>
+                    <p><strong>OAuth Scopes:</strong><br>
+                    <code>{{ phonebridge_settings.ZOHO_SCOPES }}</code></p>
+                    
+                    <p><strong>OAuth Version:</strong><br>
+                    <code>v3 (PhoneBridge Compatible)</code></p>
+                </div>
+            </div>
+            
+            <p><strong>🔗 Redirect URI (IMPORTANT):</strong><br>
+            <code class="highlight">{{ phonebridge_settings.ZOHO_REDIRECT_URI }}</code>
+            <button class="copy-button" onclick="copyToClipboard('{{ phonebridge_settings.ZOHO_REDIRECT_URI }}')">Copy</button>
+            </p>
+            
+            <!-- NEW: Validation status -->
+            {% if oauth_validation %}
+                <div style="margin-top: 15px;">
+                    <h4>📊 Configuration Validation:</h4>
+                    {% if oauth_validation.valid %}
+                        <div class="status-box status-success">
+                            ✅ <strong>Configuration is valid and ready for OAuth flow</strong>
+                        </div>
+                    {% else %}
+                        <div class="status-box status-error">
+                            ❌ <strong>Configuration issues found:</strong>
+                            <ul style="margin: 8px 0 0 20px;">
+                                {% for issue in oauth_validation.issues %}
+                                    <li>{{ issue }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    {% endif %}
+                    
+                    {% if oauth_validation.warnings %}
+                        <div class="status-box status-warning">
+                            ⚠️ <strong>Warnings:</strong>
+                            <ul style="margin: 8px 0 0 20px;">
+                                {% for warning in oauth_validation.warnings %}
+                                    <li>{{ warning }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    {% endif %}
+                </div>
+            {% endif %}
         </div>
 
+        <!-- Enhanced VitalPBX Configuration -->
         <div class="config-section">
-            <h3>VitalPBX Configuration</h3>
-            <p><strong>API Base:</strong> {{ phonebridge_settings.VITALPBX_API_BASE }}</p>
-            <p><strong>Username:</strong> {{ phonebridge_settings.VITALPBX_USERNAME|default:"Not configured" }}</p>
-            <p><strong>Timeout:</strong> {{ phonebridge_settings.CALL_TIMEOUT_SECONDS }} seconds</p>
+            <h3>📞 VitalPBX Configuration</h3>
+            <div class="grid-2">
+                <div>
+                    <p><strong>API Base URL:</strong><br>
+                    <code>{{ phonebridge_settings.VITALPBX_API_BASE }}</code></p>
+                    
+                    <p><strong>API Key:</strong><br>
+                    <code>{% if phonebridge_settings.VITALPBX_API_KEY %}***{{ phonebridge_settings.VITALPBX_API_KEY|slice:"-6:" }}{% else %}Not configured{% endif %}</code></p>
+                </div>
+                <div>
+                    <p><strong>Username (Fallback):</strong><br>
+                    <code>{{ phonebridge_settings.VITALPBX_USERNAME|default:"Not configured" }}</code></p>
+                    
+                    <p><strong>Timeout:</strong><br>
+                    <code>{{ phonebridge_settings.CALL_TIMEOUT_SECONDS }} seconds</code></p>
+                </div>
+            </div>
         </div>
 
+        <!-- NEW: Environment Variables for New Server -->
         <div class="config-section">
-            <h3>Environment Variables</h3>
-            <p>Make sure these are set in your environment:</p>
-            <pre>
-ZOHO_CLIENT_ID=your_client_id
-ZOHO_CLIENT_SECRET=your_client_secret
-VITALPBX_USERNAME=your_username
-VITALPBX_PASSWORD=your_password
-            </pre>
+            <h3>⚙️ Environment Variables (Updated for New Server)</h3>
+            <p>Make sure these are set correctly in your <code>.env</code> file:</p>
+            <pre># ==================================================
+# PhoneBridge Configuration (UPDATED for new server)
+# ==================================================
+
+# Zoho OAuth Credentials (Updated)
+ZOHO_CLIENT_ID={{ phonebridge_settings.ZOHO_CLIENT_ID|default:"1000.MJGOZDZMF9NJL38KY8XT0TVECIPGOK" }}
+ZOHO_CLIENT_SECRET={{ phonebridge_settings.ZOHO_CLIENT_SECRET|default:"your_client_secret" }}
+
+# CRITICAL: Updated Redirect URI for new server
+ZOHO_REDIRECT_URI=http://zoho.fusionsystems.co.ke:8000/phonebridge/zoho/callback/
+
+# PhoneBridge OAuth Scopes
+ZOHO_SCOPES=PhoneBridge.call.log,PhoneBridge.zohoone.search
+
+# VitalPBX Configuration
+VITALPBX_API_BASE=https://cc.fusionsystems.co.ke/api
+VITALPBX_API_KEY={{ phonebridge_settings.VITALPBX_API_KEY|default:"your_api_key" }}
+
+# Development Settings
+DEBUG=true
+SKIP_SSL_VERIFICATION=true</pre>
         </div>
 
+        <!-- NEW: Setup Instructions -->
         <div class="config-section">
-            <h3>Test Connections</h3>
-            <a href="{% url 'phonebridge:test_vitalpbx' %}" class="btn">Test VitalPBX</a>
-            <a href="{% url 'phonebridge:test_zoho' %}" class="btn">Test Zoho</a>
+            <h3>📋 Setup Instructions for New Server</h3>
+            <div style="background: white; padding: 15px; border-radius: 4px; border: 1px solid #dee2e6;">
+                <h4>Step 1: Update Zoho Developer Console</h4>
+                <ol>
+                    <li>Go to <a href="https://api-console.zoho.com/" target="_blank">Zoho API Console</a></li>
+                    <li>Find your PhoneBridge application</li>
+                    <li>Update the <strong>Authorized Redirect URIs</strong> to:</li>
+                    <div style="background: #f8f9fa; padding: 8px; border-radius: 3px; margin: 5px 0;">
+                        <code>http://zoho.fusionsystems.co.ke:8000/phonebridge/zoho/callback/</code>
+                        <button class="copy-button" onclick="copyToClipboard('http://zoho.fusionsystems.co.ke:8000/phonebridge/zoho/callback/')">Copy</button>
+                    </div>
+                    <li>Save the changes in Zoho Console</li>
+                </ol>
+
+                <h4>Step 2: Verify Environment Configuration</h4>
+                <ol>
+                    <li>Check your <code>.env</code> file has the correct <code>ZOHO_REDIRECT_URI</code></li>
+                    <li>Restart your Django application: <code>python manage.py runserver 0.0.0.0:8000</code></li>
+                    <li>Test configuration using the buttons below</li>
+                </ol>
+
+                <h4>Step 3: Test OAuth Flow</h4>
+                <ol>
+                    <li>Use "Test OAuth" button below to verify configuration</li>
+                    <li>Try connecting to Zoho from the dashboard</li>
+                    <li>Check diagnostics if there are any issues</li>
+                </ol>
+            </div>
+        </div>
+
+        <!-- Enhanced Test Connections -->
+        <div class="config-section">
+            <h3>🧪 Test Connections</h3>
+            <div class="grid-2">
+                <div>
+                    <h4>External Services</h4>
+                    <a href="{% url 'phonebridge:test_vitalpbx' %}" class="btn">Test VitalPBX API</a>
+                    <a href="{% url 'phonebridge:test_zoho' %}" class="btn">Test Zoho API</a>
+                </div>
+                <div>
+                    <h4>System Diagnostics</h4>
+                    <a href="{% url 'phonebridge:system_diagnostics' %}" class="btn btn-success">Full System Diagnostics</a>
+                    <a href="{% url 'phonebridge:zoho_status' %}" class="btn">OAuth Status</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- NEW: Quick Management Commands -->
+        <div class="config-section">
+            <h3>🛠️ Management Commands</h3>
+            <p>Useful commands for managing the new server deployment:</p>
+            <div style="background: white; padding: 15px; border-radius: 4px; border: 1px solid #dee2e6;">
+                <h4>OAuth Management:</h4>
+                <pre style="margin: 5px 0;"># Check current OAuth status
+python manage.py reset_oauth --status
+
+# Test OAuth configuration
+python manage.py reset_oauth --test-config
+
+# Clean slate reset (removes all tokens)
+python manage.py reset_oauth --clean-slate
+
+# Create test user
+python manage.py reset_oauth --create-test-user test@example.com</pre>
+
+                <h4>System Testing:</h4>
+                <pre style="margin: 5px 0;"># Run comprehensive tests
+python manage.py test_phonebridge --all
+
+# Test specific components
+python manage.py test_phonebridge --oauth-flow
+python manage.py test_phonebridge --vitalpbx</pre>
+            </div>
+        </div>
+
+        <!-- NEW: Important Notes -->
+        <div class="config-section">
+            <h3>⚠️ Important Notes for New Server</h3>
+            <div class="status-box status-warning">
+                <ul style="margin: 0; padding-left: 20px;">
+                    <li><strong>HTTP Mode:</strong> Currently running in HTTP development mode. For production, switch to HTTPS.</li>
+                    <li><strong>Redirect URI:</strong> Must be updated in Zoho Developer Console before OAuth will work.</li>
+                    <li><strong>Database:</strong> All previous OAuth tokens will need to be re-authorized for the new server.</li>
+                    <li><strong>Testing:</strong> Use the management commands to test configuration before going live.</li>
+                    <li><strong>Port 8000:</strong> Ensure your server is accessible on port 8000 or configure a reverse proxy.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- NEW: Quick Actions -->
+        <div style="text-align: center; margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 6px;">
+            <h4>🚀 Ready to Test?</h4>
+            <a href="{% url 'phonebridge:test_zoho' %}" class="btn btn-success">Test Zoho Connection</a>
+            <a href="{% url 'phonebridge:zoho_connect' %}" class="btn">Start OAuth Flow</a>
+            <a href="{% url 'phonebridge:home' %}" class="btn">Back to Dashboard</a>
         </div>
     </div>
+
+    <script>
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(function() {
+                // Show temporary success message
+                const btn = event.target;
+                const originalText = btn.innerText;
+                btn.innerText = 'Copied!';
+                btn.style.background = '#28a745';
+                setTimeout(() => {
+                    btn.innerText = originalText;
+                    btn.style.background = '#6c757d';
+                }, 2000);
+            }).catch(function(err) {
+                console.error('Could not copy text: ', err);
+                alert('Failed to copy to clipboard');
+            });
+        }
+    </script>
 </body>
 </html>

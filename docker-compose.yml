@@ -1,4 +1,4 @@
-# Updated docker-compose.yml with review processing support and PhoneBridge
+# Updated docker-compose.yml with simple redirect URI and PhoneBridge support
 
 version: "3.9"
 
@@ -25,23 +25,40 @@ services:
       - DB_USER=devuser
       - DB_PASS=changeme
       - DEBUG=true
-      - REVIEW_CRON_INTERVAL=5  # 5 minutes for development
+      - REVIEW_CRON_INTERVAL=5  # 5 min for dev, 1440 for prod
       - MODAL_APP_NAME=hotel-review-analyzer
       - ADMIN_EMAIL=markminj@gmail.com
       - MODAL_TOKEN_ID=ak-fdhXPa5QN7rTubEptCrdNM
       - MODAL_TOKEN_SECRET=as-a5JTMFiiCoX93DYjhyIUgP
       - MODAL_ENVIRONMENT=${MODAL_ENVIRONMENT:-main}
       - PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
-      # PhoneBridge Environment Variables (NEW)
-      - ZOHO_CLIENT_ID=${ZOHO_CLIENT_ID}
-      - ZOHO_CLIENT_SECRET=${ZOHO_CLIENT_SECRET}
-      - ZOHO_REDIRECT_URI=${ZOHO_REDIRECT_URI}
+      
+      # ==================================================
+      # PhoneBridge Environment Variables (UPDATED)
+      # ==================================================
+      
+      # NEW: Zoho OAuth Credentials (from partnership)
+      - ZOHO_CLIENT_ID=1000.MJGOZDZMF9NJL38KY8XT0TVECIPGOK
+      - ZOHO_CLIENT_SECRET=7b18171a976a2529e44e340b9b5149cc39da8261b3
+      
+      # UPDATED: Simple redirect URI (matches Zoho partnership config)
+      - ZOHO_REDIRECT_URI=http://zoho.fusionsystems.co.ke:8000
+      
+      # UPDATED: PhoneBridge specific scopes
+      - ZOHO_SCOPES=PhoneBridge.call.log,PhoneBridge.zohoone.search
+      
+      # VitalPBX Configuration
       - VITALPBX_API_BASE=https://cc.fusionsystems.co.ke/api
-      - VITALPBX_USERNAME=${VITALPBX_USERNAME}
-      - VITALPBX_PASSWORD=${VITALPBX_PASSWORD}
-      - VITALPBX_API_KEY=${VITALPBX_API_KEY}
+      - VITALPBX_USERNAME=${VITALPBX_USERNAME:-T5_}
+      - VITALPBX_PASSWORD=${VITALPBX_PASSWORD:-YwFV4YBaQbnZJq}
+      - VITALPBX_API_KEY=36e6b22faea32d0069b1a7bd1da9de82
+      - VITALPBX_TENANT=
+      
+      # PhoneBridge Settings
       - CALL_TIMEOUT=30
       - PHONEBRIDGE_MAX_RETRIES=3
+      
+      # Popup Configuration
       - POPUP_ENABLED=true
       - POPUP_TIMEOUT_SECONDS=10
       - CONTACT_LOOKUP_CACHE_TTL=300
@@ -49,18 +66,54 @@ services:
       - INCLUDE_CALL_HISTORY=true
       - INCLUDE_RECENT_NOTES=true
 
-      # NEW: PhoneBridge API Configuration
+      # PhoneBridge API Configuration
       - PHONEBRIDGE_API_URL=https://www.zohoapis.com/phonebridge/v3
       - PHONEBRIDGE_POPUP_ENDPOINT=/calls/popup
       - PHONEBRIDGE_CONTROL_ENDPOINT=/calls/control
 
-      # NEW: Performance Settings
+      # Performance Settings
       - MAX_CONCURRENT_POPUPS=50
       - POPUP_RETRY_DELAY=60
       - CALL_LOG_RETENTION_DAYS=90
 
-      # NEW: Phone Number Settings
+      # Phone Number Settings
       - DEFAULT_COUNTRY_CODE=kenya
+      
+      # ==================================================
+      # NEW: OAuth v3 Migration Settings
+      # ==================================================
+      
+      # Enable OAuth migration features
+      - OAUTH_MIGRATION_ENABLED=true
+      
+      # Automatically refresh tokens when they're about to expire
+      - OAUTH_AUTO_REFRESH=true
+      
+      # Fallback to US location if server info fails
+      - OAUTH_FALLBACK_TO_US=true
+      
+      # Timeout for server info requests (seconds)
+      - OAUTH_SERVER_INFO_TIMEOUT=10
+      
+      # Refresh token this many minutes before expiry
+      - OAUTH_TOKEN_REFRESH_MARGIN_MINUTES=5
+      
+      # ==================================================
+      # Development & Testing Settings (UPDATED)
+      # ==================================================
+      
+      # Enable detailed logging for OAuth flow
+      - OAUTH_DEBUG_LOGGING=true
+      
+      # Test mode for PhoneBridge (prevents actual API calls during testing)
+      - PHONEBRIDGE_TEST_MODE=false
+      
+      # Enable webhook debugging
+      - WEBHOOK_DEBUG_MODE=false
+      
+      # Skip SSL verification for development (HTTP mode)
+      - SKIP_SSL_VERIFICATION=true
+      
     depends_on:
       - db
       - redis
@@ -111,6 +164,12 @@ services:
       - MODAL_TOKEN_SECRET=as-a5JTMFiiCoX93DYjhyIUgP
       - MODAL_ENVIRONMENT=${MODAL_ENVIRONMENT:-main}
       - PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
+      
+      # PhoneBridge environment for background service
+      - ZOHO_CLIENT_ID=1000.MJGOZDZMF9NJL38KY8XT0TVECIPGOK
+      - ZOHO_CLIENT_SECRET=7b18171a976a2529e44e340b9b5149cc39da8261b3
+      - ZOHO_REDIRECT_URI=http://zoho.fusionsystems.co.ke:8000
+      
     depends_on:
       - db
       - redis
@@ -121,3 +180,30 @@ volumes:
   dev-db-data:
   redis-data:
   logs:
+
+# ==================================================
+# IMPORTANT DEPLOYMENT NOTES:
+# ==================================================
+# 
+# 1. Simple Redirect URI Configuration:
+#    - Zoho OAuth redirect: http://zoho.fusionsystems.co.ke:8000
+#    - No path needed - handled at root level
+#    - Matches Zoho partnership configuration
+#
+# 2. Environment Variables:
+#    - All PhoneBridge credentials now in docker-compose
+#    - Can still be overridden by .env file
+#    - Both main app and background service have OAuth config
+#
+# 3. Container Access:
+#    - Main app: http://zoho.fusionsystems.co.ke:8000
+#    - Admin: http://zoho.fusionsystems.co.ke:8000/admin/
+#    - PhoneBridge: http://zoho.fusionsystems.co.ke:8000/phonebridge/
+#
+# 4. Production Deployment:
+#    - Change DEBUG=false
+#    - Update ZOHO_REDIRECT_URI to HTTPS
+#    - Set SKIP_SSL_VERIFICATION=false
+#    - Update ALLOWED_HOSTS in settings.py
+#
+# ==================================================

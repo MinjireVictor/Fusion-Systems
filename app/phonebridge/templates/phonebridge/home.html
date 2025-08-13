@@ -72,6 +72,50 @@
         .table th {
             background-color: #f8f9fa;
         }
+        .server-info {
+            background: #e3f2fd;
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-size: 14px;
+            border-left: 4px solid #2196f3;
+        }
+        .migration-notice {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-size: 13px;
+        }
+        .setup-instructions {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-size: 13px;
+        }
+        .dev-notice {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 15px;
+            font-size: 13px;
+        }
+        .grid-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        code {
+            background: #f8f9fa;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
     </style>
 </head>
 <body>
@@ -79,19 +123,58 @@
         <div class="header">
             <h1>PhoneBridge Dashboard</h1>
             <p>VitalPBX & Zoho CRM Integration</p>
+            <!-- NEW: Server info for new deployment -->
+            <div class="server-info">
+                <strong>🖥️ Server:</strong> zoho.fusionsystems.co.ke:8000 (HTTP Development) | 
+                <strong>🔄 Mode:</strong> OAuth v3 PhoneBridge | 
+                <strong>📍 Status:</strong> Updated Configuration
+            </div>
         </div>
 
-        <!-- Zoho Connection Status -->
+        <!-- Enhanced Zoho Connection Status -->
         <div class="status-card {% if zoho_connected %}status-connected{% else %}status-disconnected{% endif %}">
-            <h3>Zoho Connection</h3>
+            <h3>Zoho Connection Status</h3>
             {% if zoho_connected %}
-                <p>✅ Connected to Zoho CRM</p>
+                <p>✅ Connected to Zoho PhoneBridge</p>
+                
+                <!-- NEW: Connection details -->
+                {% if token_location %}
+                    <p style="font-size: 13px; color: #666; margin: 8px 0;">
+                        📍 <strong>Location:</strong> {{ token_location|upper }} | 
+                        🔐 <strong>OAuth:</strong> {{ oauth_version|default:"v3" }} | 
+                        {% if zoho_phonebridge_enabled %}
+                            📞 <strong>PhoneBridge:</strong> ✅ Enabled
+                        {% else %}
+                            📞 <strong>PhoneBridge:</strong> ⚠️ Limited Access
+                        {% endif %}
+                    </p>
+                {% endif %}
+                
+                <!-- NEW: Migration notice if needed -->
+                {% if token_needs_migration %}
+                    <div class="migration-notice">
+                        <strong>⚠️ Migration Required:</strong> Your token needs updating for full PhoneBridge compatibility with the new server.
+                        <br><small>Click below to update your connection.</small>
+                        <br><a href="{% url 'phonebridge:zoho_connect' %}" class="btn" style="font-size: 12px; padding: 4px 8px; margin-top: 5px;">Update Connection</a>
+                    </div>
+                {% endif %}
+                
                 <form method="post" action="{% url 'phonebridge:zoho_disconnect' %}" style="display: inline;">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-danger">Disconnect</button>
                 </form>
             {% else %}
                 <p>❌ Not connected to Zoho CRM</p>
+                
+                <!-- NEW: Setup instructions for new server -->
+                <div class="setup-instructions">
+                    <strong>📋 Setup Required for New Server:</strong><br>
+                    1. <strong>Update Zoho Developer Console:</strong><br>
+                    &nbsp;&nbsp;&nbsp;Set redirect URI to: <code>http://zoho.fusionsystems.co.ke:8000/phonebridge/zoho/callback/</code><br>
+                    2. <strong>Verify Environment:</strong> Check that .env has correct ZOHO_REDIRECT_URI<br>
+                    3. <strong>Start OAuth:</strong> Click connect button below
+                </div>
+                
                 <a href="{% url 'phonebridge:zoho_connect' %}" class="btn">Connect to Zoho</a>
             {% endif %}
         </div>
@@ -113,13 +196,14 @@
                         <tr>
                             <td>{{ ext.extension }}</td>
                             <td>{{ ext.zoho_user_id|default:"Not set" }}</td>
-                            <td>{% if ext.is_active %}Active{% else %}Inactive{% endif %}</td>
+                            <td>{% if ext.is_active %}✅ Active{% else %}❌ Inactive{% endif %}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             {% else %}
                 <p>No extensions mapped yet.</p>
+                <small style="color: #666;">💡 Create extension mappings to link your PBX extensions with Zoho users.</small>
             {% endif %}
             <a href="{% url 'phonebridge:extensions' %}" class="btn">Manage Extensions</a>
         </div>
@@ -136,31 +220,90 @@
                             <th>From</th>
                             <th>To</th>
                             <th>Status</th>
+                            <th>Duration</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for call in recent_calls %}
                         <tr>
                             <td>{{ call.start_time|date:"M d, H:i" }}</td>
-                            <td>{{ call.direction|title }}</td>
+                            <td>
+                                {% if call.direction == 'inbound' %}
+                                    📞 Inbound
+                                {% else %}
+                                    📤 Outbound
+                                {% endif %}
+                            </td>
                             <td>{{ call.caller_number }}</td>
                             <td>{{ call.called_number }}</td>
-                            <td>{{ call.status|title }}</td>
+                            <td>
+                                {% if call.status == 'completed' %}
+                                    ✅ {{ call.status|title }}
+                                {% elif call.status == 'failed' %}
+                                    ❌ {{ call.status|title }}
+                                {% else %}
+                                    🔄 {{ call.status|title }}
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if call.duration_seconds %}
+                                    {{ call.duration_seconds }}s
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             {% else %}
                 <p>No call logs yet.</p>
+                <small style="color: #666;">📊 Call logs will appear here once VitalPBX webhooks are configured.</small>
             {% endif %}
         </div>
 
-        <!-- Quick Actions -->
+        <!-- Enhanced Quick Actions -->
         <div class="status-card">
-            <h3>Quick Actions</h3>
-            <a href="{% url 'phonebridge:test_vitalpbx' %}" class="btn">Test VitalPBX</a>
-            <a href="{% url 'phonebridge:test_zoho' %}" class="btn">Test Zoho</a>
-            <a href="{% url 'phonebridge:setup' %}" class="btn">Setup</a>
+            <h3>Quick Actions & Testing</h3>
+            <div class="grid-actions">
+                <div>
+                    <h4>🔧 System Tests</h4>
+                    <a href="{% url 'phonebridge:test_vitalpbx' %}" class="btn">Test VitalPBX</a>
+                    <a href="{% url 'phonebridge:test_zoho' %}" class="btn">Test Zoho API</a>
+                    <a href="{% url 'phonebridge:system_diagnostics' %}" class="btn">Full Diagnostics</a>
+                </div>
+                <div>
+                    <h4>⚙️ Configuration</h4>
+                    <a href="{% url 'phonebridge:setup' %}" class="btn">Setup & Config</a>
+                    <a href="{% url 'phonebridge:extensions' %}" class="btn">Manage Extensions</a>
+                    <a href="{% url 'phonebridge:zoho_status' %}" class="btn">OAuth Status</a>
+                </div>
+            </div>
+            
+            <!-- NEW: Development mode notice -->
+            <div class="dev-notice">
+                <strong>🚧 Development Mode Active:</strong> 
+                Running on HTTP (zoho.fusionsystems.co.ke:8000). 
+                For production deployment, switch to HTTPS and update all redirect URIs accordingly.
+                <br><small>💡 All OAuth flows and webhooks are configured for HTTP development environment.</small>
+            </div>
+        </div>
+
+        <!-- NEW: Quick Links for Development -->
+        <div class="status-card">
+            <h3>Development Quick Links</h3>
+            <div style="font-family: monospace; font-size: 13px; line-height: 1.6;">
+                <p><strong>🔗 Important URLs:</strong></p>
+                <p>• <strong>Admin:</strong> <a href="/admin/" target="_blank">http://zoho.fusionsystems.co.ke:8000/admin/</a></p>
+                <p>• <strong>PhoneBridge:</strong> <a href="/phonebridge/" target="_blank">http://zoho.fusionsystems.co.ke:8000/phonebridge/</a></p>
+                <p>• <strong>OAuth Connect:</strong> <a href="{% url 'phonebridge:zoho_connect' %}" target="_blank">http://zoho.fusionsystems.co.ke:8000/phonebridge/zoho/connect/</a></p>
+                <p>• <strong>API Docs:</strong> <a href="/api/docs/" target="_blank">http://zoho.fusionsystems.co.ke:8000/api/docs/</a></p>
+                
+                <p style="margin-top: 15px;"><strong>🔧 Management Commands:</strong></p>
+                <p>• <code>python manage.py reset_oauth --status</code></p>
+                <p>• <code>python manage.py reset_oauth --test-config</code></p>
+                <p>• <code>python manage.py reset_oauth --clean-slate</code></p>
+            </div>
         </div>
     </div>
 </body>
