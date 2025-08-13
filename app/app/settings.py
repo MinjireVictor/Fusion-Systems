@@ -146,7 +146,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3001",
     "http://localhost:8080",
     "http://127.0.0.1:8080",
-    "zoho.fusionsystems.co.ke",
+    "https://zoho.fusionsystems.co.ke",
     "http://zoho.fusionsystems.co.ke:8000",  # NEW: Add your server
     "https://zoho.fusionsystems.co.ke",      # For future HTTPS
 ]
